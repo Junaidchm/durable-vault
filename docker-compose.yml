@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: durable-vault-db
+    environment:
+      POSTGRES_USER: game_admin
+      POSTGRES_PASSWORD: game_password_secure_123
+      POSTGRES_DB: durable_vault_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U game_admin -d durable_vault_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: durable-vault-app
+    ports:
+      - '3000:3000'
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: game_admin
+      DB_PASSWORD: game_password_secure_123
+      DB_DATABASE: durable_vault_db
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  pgdata:
