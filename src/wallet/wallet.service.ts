@@ -5,7 +5,9 @@ import { Wallet } from '../entities/wallet.entity';
 import { Player } from '../entities/player.entity';
 import { Ledger } from '../entities/ledger.entity';
 import { Inventory } from '../entities/inventory.entity';
+import { ClaimedReward } from '../entities/claimed-reward.entity';
 import { getCatalogPrice } from '../config/catalog.config';
+import { getRewardPayout } from '../config/rewards.config';
 
 @Injectable()
 export class WalletService {
@@ -76,7 +78,6 @@ export class WalletService {
 
   /**
    * Atomically debits a player's wallet and grants an item inside a transaction.
-   * Insufficient funds/catalog discrepancies result in rollback with no partial effects.
    */
   async purchaseItem(
     playerId: string,
@@ -84,13 +85,11 @@ export class WalletService {
     clientPrice: number,
     existingManager?: EntityManager,
   ): Promise<{ balance: number }> {
-    // 1. Verify Item in Authoritative Catalog
     const catalogPrice = getCatalogPrice(itemId);
     if (catalogPrice === null) {
       throw new NotFoundException(`Item '${itemId}' not found in catalog`);
     }
 
-    // 2. Authoritative Price Check (Prevents price forgery from client)
     if (catalogPrice !== clientPrice) {
       throw new BadRequestException(
         `Price mismatch for item '${itemId}'. Catalog price is ${catalogPrice}, client sent ${clientPrice}`,
@@ -100,7 +99,6 @@ export class WalletService {
     const manager = existingManager || this.dataSource.manager;
 
     return await manager.transaction(async (transactionalEntityManager) => {
-      // 3. Ensure Player exists
       const player = await transactionalEntityManager.findOne(Player, {
         where: { id: playerId },
       });
@@ -108,7 +106,6 @@ export class WalletService {
         throw new BadRequestException(`Player '${playerId}' does not exist`);
       }
 
-      // 4. Lock/Retrieve Wallet (Pessimistic Row Lock)
       const wallet = await transactionalEntityManager.findOne(Wallet, {
         where: { playerId },
         lock: { mode: 'pessimistic_write' },
@@ -118,31 +115,145 @@ export class WalletService {
         throw new BadRequestException(`Wallet for player '${playerId}' not initialized`);
       }
 
-      // 5. Invariant balance check
       if (wallet.balance < catalogPrice) {
         throw new BadRequestException('Insufficient funds');
       }
 
-      // 6. Debit balance
       wallet.balance -= catalogPrice;
       await transactionalEntityManager.save(Wallet, wallet);
 
-      // 7. Grant Item to Inventory
       const inventoryItem = transactionalEntityManager.create(Inventory, {
         playerId,
         itemId,
       });
       await transactionalEntityManager.save(Inventory, inventoryItem);
 
-      // 8. Write Debit Ledger Entry
       const ledgerEntry = transactionalEntityManager.create(Ledger, {
         playerId,
-        amount: -catalogPrice, // Negative amount denotes debit
+        amount: -catalogPrice,
         reason: `PURCHASE:${itemId}`,
       });
       await transactionalEntityManager.save(Ledger, ledgerEntry);
 
       return { balance: wallet.balance };
     });
+  }
+
+  /**
+   * Claims a reward once per player.
+   * If valid, atomically flags the claim, credits the wallet balance, and writes a ledger entry.
+   */
+  async claimReward(
+    rewardId: string,
+    playerId: string,
+    existingManager?: EntityManager,
+  ): Promise<{ balance: number }> {
+    // 1. Verify Reward ID against catalog
+    const payout = getRewardPayout(rewardId);
+    if (payout === null) {
+      throw new NotFoundException(`Reward '${rewardId}' not found in catalog`);
+    }
+
+    const manager = existingManager || this.dataSource.manager;
+
+    return await manager.transaction(async (transactionalEntityManager) => {
+      // 2. Ensure Player exists
+      let player = await transactionalEntityManager.findOne(Player, {
+        where: { id: playerId },
+      });
+      if (!player) {
+        player = transactionalEntityManager.create(Player, { id: playerId });
+        await transactionalEntityManager.save(Player, player);
+      }
+
+      // 3. Lock/Retrieve Wallet (Pessimistic Row Lock)
+      let wallet = await transactionalEntityManager.findOne(Wallet, {
+        where: { playerId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!wallet) {
+        wallet = transactionalEntityManager.create(Wallet, {
+          playerId,
+          balance: 0,
+        });
+        await transactionalEntityManager.save(Wallet, wallet);
+
+        wallet = await transactionalEntityManager.findOne(Wallet, {
+          where: { playerId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!wallet) {
+          throw new Error('Fatal: failed to initialize and lock player wallet');
+        }
+      }
+
+      // 4. Check for duplicate claims at database level
+      const existingClaim = await transactionalEntityManager.findOne(ClaimedReward, {
+        where: { playerId, rewardId },
+      });
+
+      if (existingClaim) {
+        throw new BadRequestException(`Reward '${rewardId}' has already been claimed by player '${playerId}'`);
+      }
+
+      // 5. Create Claim Record (Composite key guarantees uniqueness)
+      const claim = transactionalEntityManager.create(ClaimedReward, {
+        playerId,
+        rewardId,
+      });
+      await transactionalEntityManager.save(ClaimedReward, claim);
+
+      // 6. Credit wallet balance
+      wallet.balance += payout;
+      await transactionalEntityManager.save(Wallet, wallet);
+
+      // 7. Write Ledger Audit Entry
+      const ledgerEntry = transactionalEntityManager.create(Ledger, {
+        playerId,
+        amount: payout,
+        reason: `CLAIM_REWARD:${rewardId}`,
+      });
+      await transactionalEntityManager.save(Ledger, ledgerEntry);
+
+      return { balance: wallet.balance };
+    });
+  }
+
+  /**
+   * Retrieves player wallet state including balance, inventory items, and claimed rewards.
+   */
+  async getWalletState(playerId: string): Promise<{
+    balance: number;
+    inventory: string[];
+    claimedRewards: string[];
+  }> {
+    const player = await this.dataSource.manager.findOne(Player, {
+      where: { id: playerId },
+    });
+    if (!player) {
+      throw new NotFoundException(`Player '${playerId}' not found`);
+    }
+
+    const wallet = await this.dataSource.manager.findOne(Wallet, {
+      where: { playerId },
+    });
+
+    const inventoryItems = await this.dataSource.manager.find(Inventory, {
+      where: { playerId },
+      order: { acquiredAt: 'ASC' },
+    });
+
+    const claims = await this.dataSource.manager.find(ClaimedReward, {
+      where: { playerId },
+      order: { claimedAt: 'ASC' },
+    });
+
+    return {
+      balance: wallet ? wallet.balance : 0,
+      inventory: inventoryItems.map((item) => item.itemId),
+      claimedRewards: claims.map((claim) => claim.rewardId),
+    };
   }
 }
