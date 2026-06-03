@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Req, BadRequestException } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { CreditWalletDto } from '../dto/credit-wallet.dto';
 import { PurchaseItemDto } from '../dto/purchase-item.dto';
@@ -13,11 +13,17 @@ export class WalletController {
   async credit(
     @Param('playerId') playerId: string,
     @Body() dto: CreditWalletDto,
+    @Req() req: any,
   ) {
     if (!playerId || playerId.trim() === '') {
       throw new BadRequestException('Player ID is required');
     }
-    return await this.walletService.creditWallet(playerId, dto.amount, dto.reason);
+    return await this.walletService.creditWallet(
+      playerId,
+      dto.amount,
+      dto.reason,
+      req.transactionManager,
+    );
   }
 
   @Post('v1/wallets/:playerId/purchase')
@@ -25,11 +31,17 @@ export class WalletController {
   async purchase(
     @Param('playerId') playerId: string,
     @Body() dto: PurchaseItemDto,
+    @Req() req: any,
   ) {
     if (!playerId || playerId.trim() === '') {
       throw new BadRequestException('Player ID is required');
     }
-    return await this.walletService.purchaseItem(playerId, dto.itemId, dto.price);
+    return await this.walletService.purchaseItem(
+      playerId,
+      dto.itemId,
+      dto.price,
+      req.transactionManager,
+    );
   }
 
   @Post('v1/rewards/:rewardId/claim')
@@ -37,11 +49,16 @@ export class WalletController {
   async claimReward(
     @Param('rewardId') rewardId: string,
     @Body() dto: ClaimRewardDto,
+    @Req() req: any,
   ) {
     if (!rewardId || rewardId.trim() === '') {
       throw new BadRequestException('Reward ID is required');
     }
-    return await this.walletService.claimReward(rewardId, dto.playerId);
+    return await this.walletService.claimReward(
+      rewardId,
+      dto.playerId,
+      req.transactionManager,
+    );
   }
 
   @Get('v1/wallets/:playerId')
