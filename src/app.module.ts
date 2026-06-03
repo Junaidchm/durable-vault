@@ -8,6 +8,7 @@ import { Inventory } from './entities/inventory.entity';
 import { ClaimedReward } from './entities/claimed-reward.entity';
 import { Ledger } from './entities/ledger.entity';
 import { IdempotencyKey } from './entities/idempotency-key.entity';
+import { WalletModule } from './wallet/wallet.module';
 
 @Module({
   imports: [
@@ -26,9 +27,10 @@ import { IdempotencyKey } from './entities/idempotency-key.entity';
         Ledger,
         IdempotencyKey,
       ],
-      synchronize: true, // Automatically synchronize schema (acceptable and robust for take-home reviews)
+      synchronize: true,
       logging: false,
     }),
+    WalletModule,
   ],
   controllers: [AppController],
   providers: [AppService],
