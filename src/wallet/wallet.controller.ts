@@ -3,6 +3,7 @@ import { WalletService } from './wallet.service';
 import { CreditWalletDto } from '../dto/credit-wallet.dto';
 import { PurchaseItemDto } from '../dto/purchase-item.dto';
 import { ClaimRewardDto } from '../dto/claim-reward.dto';
+import { ParsePlayerIdPipe } from './pipes/parse-player-id.pipe';
 
 @Controller()
 export class WalletController {
@@ -11,13 +12,10 @@ export class WalletController {
   @Post('v1/wallets/:playerId/credit')
   @HttpCode(HttpStatus.OK)
   async credit(
-    @Param('playerId') playerId: string,
+    @Param('playerId', ParsePlayerIdPipe) playerId: string,
     @Body() dto: CreditWalletDto,
     @Req() req: any,
   ) {
-    if (!playerId || playerId.trim() === '') {
-      throw new BadRequestException('Player ID is required');
-    }
     return await this.walletService.creditWallet(
       playerId,
       dto.amount,
@@ -29,13 +27,10 @@ export class WalletController {
   @Post('v1/wallets/:playerId/purchase')
   @HttpCode(HttpStatus.OK)
   async purchase(
-    @Param('playerId') playerId: string,
+    @Param('playerId', ParsePlayerIdPipe) playerId: string,
     @Body() dto: PurchaseItemDto,
     @Req() req: any,
   ) {
-    if (!playerId || playerId.trim() === '') {
-      throw new BadRequestException('Player ID is required');
-    }
     return await this.walletService.purchaseItem(
       playerId,
       dto.itemId,
@@ -62,10 +57,7 @@ export class WalletController {
   }
 
   @Get('v1/wallets/:playerId')
-  async getWallet(@Param('playerId') playerId: string) {
-    if (!playerId || playerId.trim() === '') {
-      throw new BadRequestException('Player ID is required');
-    }
+  async getWallet(@Param('playerId', ParsePlayerIdPipe) playerId: string) {
     return await this.walletService.getWalletState(playerId);
   }
 }

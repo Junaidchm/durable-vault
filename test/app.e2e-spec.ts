@@ -140,6 +140,70 @@ describe('Durable Game Economy Service (E2E Integration & Concurrency)', () => {
       expect(res.status).toBe(HttpStatus.BAD_REQUEST);
       expect(res.body.message).toContain('Player ID is required');
     });
+
+    it('POST /v1/wallets/:playerId/credit - should reject oversized playerId (>255 characters)', async () => {
+      const longPlayerId = 'a'.repeat(256);
+      const res = await request(app.getHttpServer())
+        .post(`/v1/wallets/${longPlayerId}/credit`)
+        .set('idempotency-key', 'key-oversized-credit')
+        .send({ amount: 100, reason: 'Credit' });
+
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+      expect(res.body.message).toContain('Player ID must be 255 characters or less');
+    });
+
+    it('POST /v1/wallets/:playerId/purchase - should reject oversized playerId (>255 characters)', async () => {
+      const longPlayerId = 'a'.repeat(256);
+      const res = await request(app.getHttpServer())
+        .post(`/v1/wallets/${longPlayerId}/purchase`)
+        .set('idempotency-key', 'key-oversized-purchase')
+        .send({ itemId: 'sword', price: 100 });
+
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+      expect(res.body.message).toContain('Player ID must be 255 characters or less');
+    });
+
+    it('POST /v1/rewards/:rewardId/claim - should reject oversized playerId (>255 characters) in body', async () => {
+      const longPlayerId = 'a'.repeat(256);
+      const res = await request(app.getHttpServer())
+        .post('/v1/rewards/welcome/claim')
+        .set('idempotency-key', 'key-oversized-claim')
+        .send({ playerId: longPlayerId });
+
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+      expect(res.body.message).toBeDefined();
+    });
+
+    it('GET /v1/wallets/:playerId - should reject oversized playerId (>255 characters)', async () => {
+      const longPlayerId = 'a'.repeat(256);
+      const res = await request(app.getHttpServer())
+        .get(`/v1/wallets/${longPlayerId}`);
+
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+      expect(res.body.message).toContain('Player ID must be 255 characters or less');
+    });
+
+    it('POST /v1/wallets/:playerId/credit - should accept boundary playerId of exactly 255 characters', async () => {
+      const boundaryPlayerId = 'a'.repeat(255);
+      const res = await request(app.getHttpServer())
+        .post(`/v1/wallets/${boundaryPlayerId}/credit`)
+        .set('idempotency-key', 'key-boundary-255-credit')
+        .send({ amount: 100, reason: 'Boundary check 255' });
+
+      expect(res.status).toBe(HttpStatus.OK);
+      expect(res.body.balance).toBe(100);
+    });
+
+    it('POST /v1/wallets/:playerId/credit - should reject boundary playerId of exactly 256 characters', async () => {
+      const boundaryPlayerId = 'a'.repeat(256);
+      const res = await request(app.getHttpServer())
+        .post(`/v1/wallets/${boundaryPlayerId}/credit`)
+        .set('idempotency-key', 'key-boundary-256-credit')
+        .send({ amount: 100, reason: 'Boundary check 256' });
+
+      expect(res.status).toBe(HttpStatus.BAD_REQUEST);
+      expect(res.body.message).toContain('Player ID must be 255 characters or less');
+    });
   });
 
   describe('B. Core End-to-End Success Paths', () => {
