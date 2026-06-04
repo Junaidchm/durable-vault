@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
+import { Player } from './player.entity';
 
 @Entity('inventories')
 @Index(['playerId'])
@@ -8,6 +9,10 @@ export class Inventory {
 
   @Column({ type: 'varchar', length: 255, name: 'player_id' })
   playerId: string;
+
+  @ManyToOne(() => Player, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'player_id' })
+  player: Player;
 
   @Column({ type: 'varchar', length: 255, name: 'item_id' })
   itemId: string;
