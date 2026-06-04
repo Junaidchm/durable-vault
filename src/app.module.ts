@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -8,6 +9,8 @@ import { Inventory } from './entities/inventory.entity';
 import { ClaimedReward } from './entities/claimed-reward.entity';
 import { Ledger } from './entities/ledger.entity';
 import { IdempotencyKey } from './entities/idempotency-key.entity';
+import { WalletModule } from './wallet/wallet.module';
+import { IdempotencyInterceptor } from './interceptors/idempotency.interceptor';
 
 @Module({
   imports: [
@@ -26,11 +29,18 @@ import { IdempotencyKey } from './entities/idempotency-key.entity';
         Ledger,
         IdempotencyKey,
       ],
-      synchronize: true, // Automatically synchronize schema (acceptable and robust for take-home reviews)
+      synchronize: true,
       logging: false,
     }),
+    WalletModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: IdempotencyInterceptor,
+    },
+  ],
 })
 export class AppModule {}
