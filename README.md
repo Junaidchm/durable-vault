@@ -202,3 +202,27 @@ To manually verify that player balances and item grants persist across container
      -d '{"amount": 500, "reason": "SETUP"}'
    ```
    Verify that it catches the duplicate, returns the cached response, and does not apply the credit a second time (i.e. the balance stays at `500` instead of rising to `1000`).
+
+---
+
+## Docker Hub Production Image
+
+The final production image is compiled using a multi-stage build and is publicly available on Docker Hub.
+
+* **Image Name**: `junaid8590/durable-vault:latest`
+* **Pull Command**:
+  ```bash
+  docker pull junaid8590/durable-vault:latest
+  ```
+* **Run Command (Standalone)**:
+  To run the application container standalone (connecting to a external database):
+  ```bash
+  docker run -d -p 3000:3000 \
+    -e DB_HOST=<db-host-address> \
+    -e DB_PORT=5432 \
+    -e DB_USERNAME=game_admin \
+    -e DB_PASSWORD=game_password_secure_123 \
+    -e DB_DATABASE=durable_vault_db \
+    junaid8590/durable-vault:latest
+  ```
+
